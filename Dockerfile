@@ -1,14 +1,14 @@
 FROM php:8.2-apache
 
-# 1. LIMPIEZA AGRESIVA DE MPM
-# Eliminamos físicamente los archivos de carga y configuración de event y worker
-# tanto de la carpeta de disponibles como de la de activados.
-RUN rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-available/mpm_event.* \
-    && rm -f /etc/apache2/mods-enabled/mpm_worker.* /etc/apache2/mods-available/mpm_worker.* \
+# 1. SOLUCIÓN RADICAL PARA RAILWAY (MPM ERROR)
+# Eliminamos físicamente los archivos de mpm_event.
+# En Railway, si no borras estos archivos, el healthcheck fallará con AH00534.
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
+    && rm -f /etc/apache2/mods-enabled/mpm_event.conf \
     && a2enmod mpm_prefork \
     && a2enmod rewrite
 
-# 2. Configurar Apache (Puerto 8080 y Directory)
+# 2. CONFIGURACIÓN DE PUERTO (Railway usa la variable PORT, pero 8080 es estándar)
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf \
     && sed -i '/DocumentRoot \/var\/www\/html/a \
@@ -17,20 +17,22 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
         Require all granted\n\
     </Directory>' /etc/apache2/sites-available/000-default.conf
 
-# 3. SQLite y Extensiones
+# 3. INSTALAR SQLITE
 RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-install pdo pdo_sqlite
 
-# 4. Archivos y Permisos
+# 4. ARCHIVOS Y TRABAJO
 WORKDIR /var/www/html
 COPY . /var/www/html/
 
-RUN mkdir -p /data \
-    && chown -R www-data:www-data /var/www/html /data \
-    && chmod -R 755 /var/www/html \
-    && chmod 777 /data
+# 5. PERMISOS CRÍTICOS (Para evitar errores de base de datos en Railway)
+# Railway usa un sistema de archivos efímero a menos que montes un volumen.
+RUN mkdir -p /var/www/html/database \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 /var/www/html
 
-EXPOSE 8080
+# Railway necesita que Apache corra en el foreground
+CMD ["apache2-foreground"]

@@ -2,7 +2,7 @@
 // config/db.php
 date_default_timezone_set('America/Mexico_City'); // Configurar zona horaria (UTC-6)
 
-$db_file = __DIR__ . '/../database.sqlite';
+$db_file = getenv('DB_PATH') ?: '/data/database.sqlite';
 $is_new = !file_exists($db_file);
 
 try {
